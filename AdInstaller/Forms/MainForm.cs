@@ -41,6 +41,10 @@ public sealed class MainForm : Form
 		ClientSize = new Size(820, 480);
 		MinimumSize = new Size(640, 360);
 		Font = new Font("Segoe UI", 9.5f);
+		// ApplicationIcon in the csproj only sets the compiled .exe's own file icon (what Explorer shows); the
+		// running window's title bar / taskbar button is a separate Form.Icon that stays the generic WinForms
+		// default unless set here too -- reuse the already-embedded exe icon rather than shipping app.ico twice.
+		try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { /* best-effort */ }
 
 		BuildLayout();
 		WireEvents();

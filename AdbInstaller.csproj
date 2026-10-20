@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<!-- WinForms only: this is a small internal dev tool (install APK/AAB to a device over USB or
+		     wireless debugging), not something that needs to run anywhere but the dev's own Windows machine. -->
+		<OutputType>WinExe</OutputType>
+		<TargetFramework>net10.0-windows</TargetFramework>
+		<UseWindowsForms>true</UseWindowsForms>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<RootNamespace>AdbInstaller</RootNamespace>
+		<ApplicationIcon />
+	</PropertyGroup>
+
+</Project>

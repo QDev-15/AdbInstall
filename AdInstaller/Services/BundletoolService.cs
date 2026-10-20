@@ -1,20 +1,47 @@
+using System.IO.Compression;
 using System.Text.Json;
 
 namespace AdbInstaller.Services;
 
 /// <summary>
 /// adb cannot install an .aab directly -- an Android App Bundle is Play's own upload format, not something a
-/// device can run. The standard way to test one on a real device is Google's own bundletool: it builds a
-/// device-specific "APK set" from the bundle (build-apks), then pushes that set to the device (install-apks).
-/// Needs a JRE on PATH (not bundled here -- out of scope for a small dev tool) and bundletool.jar itself,
-/// downloaded once from its GitHub releases into %LocalAppData%\AdbInstaller\ if not already there.
+/// device can run. The standard way to get one onto a real device is Google's own bundletool: it builds a
+/// single universal APK from the bundle (build-apks --mode=universal), which is then installed with a plain
+/// "adb install -r" like any other .apk. Needs a JRE on PATH (not bundled here -- out of scope for a small dev
+/// tool) and bundletool.jar itself, downloaded once from its GitHub releases into %LocalAppData%\AdbInstaller\
+/// if not already there.
 /// </summary>
 public sealed class BundletoolService(string adbPath)
 {
 	private static readonly string CacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AdbInstaller");
 	private static readonly string JarPath = Path.Combine(CacheDir, "bundletool.jar");
+	private static readonly string KeystorePath = Path.Combine(CacheDir, "debug.keystore");
+	private const string KeystorePassword = "android";
+	private const string KeyAlias = "androiddebugkey";
 
 	public static bool IsCached => File.Exists(JarPath);
+
+	/// <summary>bundletool only auto-signs with a debug key if ~/.android/debug.keystore (the one Android
+	/// Studio normally generates on first run) already exists on this machine -- otherwise it silently builds
+	/// UNSIGNED APKs (just a warning on its own stderr), which then fail to install with a cryptic
+	/// "INSTALL_PARSE_FAILED_NO_CERTIFICATES ... Attempt to get length of null array". Generating and caching
+	/// our own debug keystore here makes a sideload work regardless of whether Android Studio has ever run on
+	/// this machine. Same well-known parameters Android tooling itself uses for a debug key -- this is for
+	/// local test installs only, never Play's own upload signature.</summary>
+	private static async Task<string> EnsureDebugKeystoreAsync(CancellationToken ct)
+	{
+		if (File.Exists(KeystorePath)) return KeystorePath;
+		Directory.CreateDirectory(CacheDir);
+		string tmp = KeystorePath + ".tmp";
+		try { if (File.Exists(tmp)) File.Delete(tmp); } catch { /* best-effort */ }
+		ProcessResult result = await ProcessRunner.RunAsync("keytool",
+			$"-genkeypair -keystore \"{tmp}\" -alias {KeyAlias} -storepass {KeystorePassword} -keypass {KeystorePassword} " +
+			$"-keyalg RSA -keysize 2048 -validity 10000 -dname \"CN=Android Debug,O=Android,C=US\"", null, ct);
+		if (result.ExitCode != 0 || !File.Exists(tmp))
+			throw new InvalidOperationException("Không tạo được keystore debug để ký APK (cần keytool, đi kèm JDK):\n" + result.Output);
+		File.Move(tmp, KeystorePath, overwrite: true);
+		return KeystorePath;
+	}
 
 	public static async Task<bool> IsJavaAvailableAsync()
 	{
@@ -69,37 +96,50 @@ public sealed class BundletoolService(string adbPath)
 		return JarPath;
 	}
 
-	/// <summary>build-apks (device-specific split APKs, auto-signed with a throwaway debug key for local
-	/// testing -- Play's own upload signature is irrelevant here, the device just needs SOME valid signature)
-	/// then install-apks (pushes that set to the one device named by <paramref name="serial"/>).
-	/// <paramref name="onProgress"/> reports (percent 0-100, current-stage label): build-apks/install-apks
-	/// are each one opaque external command with no internal progress of their own, so -- unlike the jar
-	/// download above -- these are step milestones (jump on start/finish), not continuous byte progress.</summary>
+	/// <summary>build-apks --mode=universal (one single APK with every density/ABI/language, instead of
+	/// per-device split APKs) then a plain "adb install -r" on the extracted universal.apk -- the exact same,
+	/// already-proven path used for .apk files elsewhere in this app. Device-specific SPLIT installs (the
+	/// previous approach, via bundletool's own "install-apks") hit a real Android/bundletool bug on some
+	/// devices: a config split like base-xxhdpi.apk fails with "INSTALL_PARSE_FAILED_NO_CERTIFICATES ...
+	/// Attempt to get length of null array" even though the bundle itself is fine. A universal APK has no
+	/// splits to go wrong, at the cost of a somewhat larger download (everything bundled into one file).
+	/// <paramref name="onProgress"/> reports (percent 0-100, current-stage label): build-apks/adb install are
+	/// each one opaque external command with no internal progress of their own, so -- unlike the jar download
+	/// above -- these are step milestones (jump on start/finish), not continuous byte progress.</summary>
 	public async Task InstallAabAsync(string aabPath, string serial, Action<string>? onLine, Action<int, string>? onProgress = null, CancellationToken ct = default)
 	{
 		string jar = IsCached ? JarPath : await EnsureDownloadedAsync(onLine, pct => onProgress?.Invoke(pct * 15 / 100, "Đang tải bundletool.jar"), ct);
 		onProgress?.Invoke(15, "Đang chuẩn bị bundletool");
 		string apksPath = Path.Combine(Path.GetTempPath(), $"adbinstaller_{Guid.NewGuid():N}.apks");
+		string extractDir = Path.Combine(Path.GetTempPath(), $"adbinstaller_{Guid.NewGuid():N}");
 		try
 		{
-			onProgress?.Invoke(15, "Đang tạo bộ APK cho thiết bị (build-apks)");
-			onLine?.Invoke("Đang tạo bộ APK từ AAB cho thiết bị này (build-apks)...");
+			string keystore = await EnsureDebugKeystoreAsync(ct);
+
+			onProgress?.Invoke(15, "Đang tạo APK universal từ AAB (build-apks)");
+			onLine?.Invoke("Đang tạo APK universal từ AAB (build-apks --mode=universal)...");
 			ProcessResult build = await ProcessRunner.RunAsync("java",
-				$"-jar \"{jar}\" build-apks --bundle=\"{aabPath}\" --output=\"{apksPath}\" --connected-device --device-id={serial} --adb=\"{adbPath}\" --overwrite",
+				$"-jar \"{jar}\" build-apks --bundle=\"{aabPath}\" --output=\"{apksPath}\" --mode=universal --overwrite " +
+				$"--ks=\"{keystore}\" --ks-pass=pass:{KeystorePassword} --ks-key-alias={KeyAlias} --key-pass=pass:{KeystorePassword}",
 				onLine, ct);
 			if (build.ExitCode != 0) throw new InvalidOperationException("build-apks thất bại:\n" + build.Output);
 
-			onProgress?.Invoke(60, "Đang cài đặt lên thiết bị (install-apks)");
-			onLine?.Invoke("Đang cài bộ APK lên thiết bị (install-apks)...");
-			ProcessResult install = await ProcessRunner.RunAsync("java",
-				$"-jar \"{jar}\" install-apks --apks=\"{apksPath}\" --device-id={serial} --adb=\"{adbPath}\"",
-				onLine, ct);
-			if (install.ExitCode != 0) throw new InvalidOperationException("install-apks thất bại:\n" + install.Output);
+			onProgress?.Invoke(55, "Đang giải nén APK universal");
+			ZipFile.ExtractToDirectory(apksPath, extractDir);
+			string universalApk = Path.Combine(extractDir, "universal.apk");
+			if (!File.Exists(universalApk)) throw new InvalidOperationException("Không tìm thấy universal.apk trong gói build-apks.");
+
+			onProgress?.Invoke(70, "Đang cài đặt lên thiết bị (adb install)");
+			onLine?.Invoke("Đang cài APK universal lên thiết bị (adb install)...");
+			ProcessResult install = await ProcessRunner.RunAsync(adbPath, $"-s {serial} install -r \"{universalApk}\"", onLine, ct);
+			if (install.ExitCode != 0 || !install.Output.Contains("Success", StringComparison.OrdinalIgnoreCase))
+				throw new InvalidOperationException("adb install thất bại:\n" + install.Output);
 			onProgress?.Invoke(100, "Đã cài đặt xong");
 		}
 		finally
 		{
 			try { if (File.Exists(apksPath)) File.Delete(apksPath); } catch { /* best-effort cleanup */ }
+			try { if (Directory.Exists(extractDir)) Directory.Delete(extractDir, recursive: true); } catch { /* best-effort cleanup */ }
 		}
 	}
 }

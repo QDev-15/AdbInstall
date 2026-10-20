@@ -271,7 +271,12 @@ public sealed class MainForm : Form
 		catch (Exception ex)
 		{
 			SetBusy(false, "Cài đặt thất bại.");
-			MessageBox.Show(this, ex.Message, "Cài đặt thất bại", MessageBoxButtons.OK, MessageBoxIcon.Error);
+			string message = ex.Message.Contains("INSTALL_FAILED_UPDATE_INCOMPATIBLE", StringComparison.OrdinalIgnoreCase)
+				|| ex.Message.Contains("signatures do not match", StringComparison.OrdinalIgnoreCase)
+				? "Ứng dụng đã cài trên máy được ký bằng key khác với file này (ví dụ: bản tải từ Play Store, hoặc build release/debug khác nhau). " +
+				  "Hãy gỡ cài đặt ứng dụng cũ trên thiết bị rồi cài lại.\n\n" + ex.Message
+				: ex.Message;
+			MessageBox.Show(this, message, "Cài đặt thất bại", MessageBoxButtons.OK, MessageBoxIcon.Error);
 		}
 	}
 

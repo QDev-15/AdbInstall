@@ -89,4 +89,27 @@ public sealed class AdbService(string adbPath)
 	/// a build to the same test device, not a fresh install every time.</summary>
 	public Task<ProcessResult> InstallApkAsync(string serial, string apkPath, Action<string>? onLine, CancellationToken ct = default) =>
 		ProcessRunner.RunAsync(adbPath, $"-s {serial} install -r \"{apkPath}\"", onLine, ct);
+
+	/// <summary>Android 11+ wireless debugging devices currently broadcasting on the local Wi-Fi network via
+	/// mDNS. Only finds a device that is itself advertising right now -- its "Pair device with pairing code" or
+	/// main "Wireless debugging" screen open; a device using the older "adb tcpip" mode, or sitting behind a
+	/// router/AP that blocks mDNS multicast between clients, never shows up here.</summary>
+	public async Task<List<MdnsServiceItem>> ScanMdnsAsync(CancellationToken ct = default)
+	{
+		ProcessResult result = await ProcessRunner.RunAsync(adbPath, "mdns services", ct: ct);
+		var services = new List<MdnsServiceItem>();
+		foreach (string line in result.Output.Split('\n'))
+		{
+			Match match = Regex.Match(line.Trim(), @"^(\S+)\._adb-tls-(pairing|connect)\._tcp\.?\s+(\d{1,3}(?:\.\d{1,3}){3}):(\d+)\s*$");
+			if (!match.Success) continue;
+			services.Add(new MdnsServiceItem
+			{
+				Name = match.Groups[1].Value,
+				IsPairing = match.Groups[2].Value == "pairing",
+				Ip = match.Groups[3].Value,
+				Port = match.Groups[4].Value,
+			});
+		}
+		return services;
+	}
 }

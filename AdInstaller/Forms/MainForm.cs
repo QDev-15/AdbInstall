@@ -24,13 +24,14 @@ public sealed class MainForm : Form
 	private readonly Button _refreshButton = new() { Text = "Làm mới" };
 	private readonly Button _pairWifiButton = new() { Text = "Kết nối qua Wi-Fi..." };
 	private readonly Button _installButton = new() { Text = "Cài đặt", Visible = false, Enabled = false, Height = 36 };
-	private readonly ProgressBar _progress = new() { Dock = DockStyle.Bottom, Style = ProgressBarStyle.Marquee, Visible = false, Height = 10 };
+	private readonly ProgressBar _progress = new() { Dock = DockStyle.Bottom, Style = ProgressBarStyle.Continuous, Minimum = 0, Maximum = 100, Visible = false, Height = 10 };
 	private readonly Label _status = new() { Dock = DockStyle.Bottom, Height = 22, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(4, 0, 0, 0) };
 	private readonly System.Windows.Forms.Timer _devicePoll = new() { Interval = 2000 };
 
 	private readonly List<PackageFile> _files = [];
 	private AdbService? _adb;
 	private bool _operationRunning;
+	private int _progressPercent;
 	private const int ActionColumnIndex = 3;
 
 	public MainForm()
@@ -239,20 +240,27 @@ public sealed class MainForm : Form
 		if (_deviceGrid.CurrentRow.Cells["Serial"].Value is not string serial) return;
 
 		SetBusy(true, "Đang chuẩn bị cài đặt...");
-		void OnLine(string line) => BeginInvoke(() => _status.Text = line);
+		// Raw adb/bundletool output lines, appended with whatever the last known step percent was -- the step
+		// milestones below (SetProgress) already give a stage label, this just surfaces the tool's own detail
+		// (e.g. "Success", a device error) between those milestones instead of the status line going quiet.
+		void OnLine(string line) => BeginInvoke(() => _status.Text = $"{line} ({_progressPercent}%)");
 		try
 		{
 			if (file.Kind == PackageKind.Apk)
 			{
+				SetProgress(15, $"Đang cài đặt {file.FileName} lên {serial} (adb install)");
 				Services.ProcessResult result = await _adb.InstallApkAsync(serial, file.FullPath, OnLine);
 				if (result.ExitCode != 0 || !result.Output.Contains("Success", StringComparison.OrdinalIgnoreCase))
 					throw new InvalidOperationException(result.Output);
+				SetProgress(100, "Đã cài đặt xong");
 			}
 			else
 			{
 				if (!await BundletoolService.IsJavaAvailableAsync())
 					throw new InvalidOperationException("Cần cài Java (JRE/JDK) để cài file .aab qua bundletool -- không tìm thấy lệnh \"java\".");
-				await new BundletoolService(_adb.AdbPath).InstallAabAsync(file.FullPath, serial, OnLine);
+				SetProgress(0, "Đang chuẩn bị bundletool");
+				await new BundletoolService(_adb.AdbPath).InstallAabAsync(file.FullPath, serial, OnLine,
+					(percent, stage) => BeginInvoke(() => SetProgress(percent, stage)));
 			}
 			SetBusy(false, $"Đã cài {file.FileName} lên {serial}.");
 		}
@@ -267,9 +275,18 @@ public sealed class MainForm : Form
 	{
 		_operationRunning = busy;
 		_progress.Visible = busy;
+		_progressPercent = 0;
+		_progress.Value = 0;
 		_status.Text = statusText;
 		_addButton.Enabled = _removeButton.Enabled = _refreshButton.Enabled = _pairWifiButton.Enabled = !busy;
 		_fileList.Enabled = _deviceGrid.Enabled = !busy;
 		UpdateInstallButtonVisibility();
+	}
+
+	private void SetProgress(int percent, string stageText)
+	{
+		_progressPercent = Math.Clamp(percent, 0, 100);
+		_progress.Value = _progressPercent;
+		_status.Text = $"{stageText} ({_progressPercent}%)";
 	}
 }

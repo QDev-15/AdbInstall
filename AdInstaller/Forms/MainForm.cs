@@ -243,7 +243,7 @@ public partial class MainForm : Form
     private void UpdateInstallButtonVisibility()
     {
         bool fileSelected = _fileList.SelectedItem != null;
-        bool deviceSelected = _deviceGrid.CurrentRow != null && _deviceGrid.CurrentRow.Cells["Status"].Value as string == "Đã kết nối";
+        bool deviceSelected = _deviceGrid.CurrentRow != null && _deviceGrid.CurrentRow.Cells[2].Value as string == "Đã kết nối";
         _installButton.Visible = fileSelected && deviceSelected;
         _installButton.Enabled = _installButton.Visible && !_operationRunning;
     }
@@ -251,7 +251,7 @@ public partial class MainForm : Form
     private async Task InstallAsync()
     {
         if (_adb == null || _fileList.SelectedItem is not PackageFile file || _deviceGrid.CurrentRow == null) return;
-        if (_deviceGrid.CurrentRow.Cells["Serial"].Value is not string serial) return;
+        if (_deviceGrid.CurrentRow.Cells[1].Value is not string serial) return;
 
         SetBusy(true, "Đang chuẩn bị cài đặt...");
         // Raw adb/bundletool output lines, appended with whatever the last known step percent was -- the step

@@ -275,28 +275,33 @@ partial class MainForm
         _bottomPanel.Padding = new Padding(8, 6, 8, 6);
         _bottomPanel.Size = new Size(820, 46);
         _bottomPanel.TabIndex = 1;
-        // 
+        //
         // dataGridViewTextBoxColumn1
-        // 
+        //
         dataGridViewTextBoxColumn1.HeaderText = "Thiết bị";
-        dataGridViewTextBoxColumn1.Name = "dataGridViewTextBoxColumn1";
+        dataGridViewTextBoxColumn1.Name = "Name";
         dataGridViewTextBoxColumn1.ReadOnly = true;
-        // 
+        //
         // dataGridViewTextBoxColumn2
-        // 
+        //
         dataGridViewTextBoxColumn2.HeaderText = "Serial / Địa chỉ";
-        dataGridViewTextBoxColumn2.Name = "dataGridViewTextBoxColumn2";
+        dataGridViewTextBoxColumn2.Name = "Serial";
         dataGridViewTextBoxColumn2.ReadOnly = true;
-        // 
+        //
         // dataGridViewTextBoxColumn3
-        // 
+        //
         dataGridViewTextBoxColumn3.HeaderText = "Trạng thái";
-        dataGridViewTextBoxColumn3.Name = "dataGridViewTextBoxColumn3";
+        dataGridViewTextBoxColumn3.Name = "Status";
         dataGridViewTextBoxColumn3.ReadOnly = true;
-        // 
+        //
         // dataGridViewButtonColumn1
-        // 
-        dataGridViewButtonColumn1.Name = "dataGridViewButtonColumn1";
+        //
+        // Name must stay "Action" (not the field's own identifier) -- MainForm.cs's ActionColumnIndex /
+        // row.Cells[...] lookups key off this column Name string, not the generated field name.
+        dataGridViewButtonColumn1.Name = "Action";
+        dataGridViewButtonColumn1.HeaderText = "";
+        dataGridViewButtonColumn1.UseColumnTextForButtonValue = false;
+        dataGridViewButtonColumn1.FillWeight = 60F;
         dataGridViewButtonColumn1.ReadOnly = true;
         // 
         // MainForm

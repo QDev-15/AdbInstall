@@ -34,7 +34,14 @@ public sealed class BundletoolService(string adbPath)
 		Directory.CreateDirectory(CacheDir);
 		string tmp = KeystorePath + ".tmp";
 		try { if (File.Exists(tmp)) File.Delete(tmp); } catch { /* best-effort */ }
-		ProcessResult result = await ProcessRunner.RunAsync("keytool",
+
+		string? java = FindJava();
+		if (java == null) throw new InvalidOperationException("Không tìm thấy Java để chạy keytool.");
+		string keytool = Path.Combine(Path.GetDirectoryName(java)!, "keytool.exe");
+		if (!File.Exists(keytool))
+			throw new InvalidOperationException("Tìm thấy Java nhưng thiếu keytool (cần bản JDK đầy đủ, không chỉ JRE): " + keytool);
+
+		ProcessResult result = await ProcessRunner.RunAsync(keytool,
 			$"-genkeypair -keystore \"{tmp}\" -alias {KeyAlias} -storepass {KeystorePassword} -keypass {KeystorePassword} " +
 			$"-keyalg RSA -keysize 2048 -validity 10000 -dname \"CN=Android Debug,O=Android,C=US\"", null, ct);
 		if (result.ExitCode != 0 || !File.Exists(tmp))
@@ -43,14 +50,54 @@ public sealed class BundletoolService(string adbPath)
 		return KeystorePath;
 	}
 
-	public static async Task<bool> IsJavaAvailableAsync()
+	public static Task<bool> IsJavaAvailableAsync() => Task.FromResult(FindJava() != null);
+
+	/// <summary>Looks for java.exe the same way <see cref="AdbService.FindAdb"/> looks for adb.exe: a plain
+	/// "java" on PATH is the common case everywhere else, but a machine set up only for Android development often
+	/// has a JDK bundled with Android Studio / the SDK command-line tools and never added to PATH or JAVA_HOME --
+	/// e.g. "Program Files\Android\openjdk\jdk-21.0.8\bin\java.exe". Returns null if none of them have it.</summary>
+	private static string? FindJava()
 	{
+		string? javaHome = Environment.GetEnvironmentVariable("JAVA_HOME");
+		if (!string.IsNullOrEmpty(javaHome))
+		{
+			string candidate = Path.Combine(javaHome, "bin", "java.exe");
+			if (File.Exists(candidate)) return candidate;
+		}
+
 		try
 		{
-			ProcessResult result = await ProcessRunner.RunAsync("java", "-version");
-			return result.ExitCode == 0;
+			ProcessResult result = ProcessRunner.RunAsync("where", "java.exe").GetAwaiter().GetResult();
+			string? first = result.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault();
+			if (result.ExitCode == 0 && first != null && File.Exists(first)) return first;
 		}
-		catch { return false; }
+		catch { /* "where" itself missing or erroring: fall through to the bundled-JDK search below */ }
+
+		List<string> roots = [];
+		foreach (string pf in new[] { Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86) })
+		{
+			if (string.IsNullOrEmpty(pf)) continue;
+			roots.Add(Path.Combine(pf, "Android", "openjdk")); // Android Studio's own bundled JDK (newer Studio versions)
+			roots.Add(Path.Combine(pf, "Android", "jdk")); // older Studio / SDK Manager "Android SDK" JDK component
+			roots.Add(Path.Combine(pf, "Android", "Android Studio", "jbr")); // Android Studio's JetBrains Runtime
+		}
+		roots.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Android Studio", "jbr"));
+
+		foreach (string root in roots)
+		{
+			if (!Directory.Exists(root)) continue;
+			try
+			{
+				// Multiple JDK versions can be installed side by side (e.g. a leftover jdk-8 next to jdk-21);
+				// OrderByDescending on the full path puts the newest version first often enough for this --
+				// a small dev tool's "good enough" heuristic, not exact version parsing.
+				string? found = Directory.EnumerateFiles(root, "java.exe", SearchOption.AllDirectories).OrderByDescending(p => p).FirstOrDefault();
+				if (found != null) return found;
+			}
+			catch { /* unreadable directory etc.: skip this root */ }
+		}
+
+		return null;
 	}
 
 	/// <summary>Downloads the latest bundletool-all-*.jar from GitHub releases (one-time; cached afterward).
@@ -108,6 +155,10 @@ public sealed class BundletoolService(string adbPath)
 	/// above -- these are step milestones (jump on start/finish), not continuous byte progress.</summary>
 	public async Task InstallAabAsync(string aabPath, string serial, Action<string>? onLine, Action<int, string>? onProgress = null, CancellationToken ct = default)
 	{
+		string? java = FindJava();
+		if (java == null)
+			throw new InvalidOperationException("Cần cài Java (JRE/JDK) để cài file .aab qua bundletool -- không tìm thấy lệnh \"java\" (đã tìm cả PATH, JAVA_HOME và các JDK đi kèm Android Studio/SDK).");
+
 		string jar = IsCached ? JarPath : await EnsureDownloadedAsync(onLine, pct => onProgress?.Invoke(pct * 15 / 100, "Đang tải bundletool.jar"), ct);
 		onProgress?.Invoke(15, "Đang chuẩn bị bundletool");
 		string apksPath = Path.Combine(Path.GetTempPath(), $"adbinstaller_{Guid.NewGuid():N}.apks");
@@ -118,7 +169,7 @@ public sealed class BundletoolService(string adbPath)
 
 			onProgress?.Invoke(15, "Đang tạo APK universal từ AAB (build-apks)");
 			onLine?.Invoke("Đang tạo APK universal từ AAB (build-apks --mode=universal)...");
-			ProcessResult build = await ProcessRunner.RunAsync("java",
+			ProcessResult build = await ProcessRunner.RunAsync(java,
 				$"-jar \"{jar}\" build-apks --bundle=\"{aabPath}\" --output=\"{apksPath}\" --mode=universal --overwrite " +
 				$"--ks=\"{keystore}\" --ks-pass=pass:{KeystorePassword} --ks-key-alias={KeyAlias} --key-pass=pass:{KeystorePassword}",
 				onLine, ct);

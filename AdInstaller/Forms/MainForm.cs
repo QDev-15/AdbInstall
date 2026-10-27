@@ -72,6 +72,14 @@ public partial class MainForm : Form
 
     private async void ConnectIpButton_Click(object? sender, EventArgs e) => await ConnectByIpAsync();
 
+    /// <summary>"Giám sát thiết bị...": opens non-modally (Show, not ShowDialog) so the user can keep installing
+    /// / reconnecting in MainForm while watching live CPU/RAM/battery in the monitor window.</summary>
+    private void MonitorButton_Click(object? sender, EventArgs e)
+    {
+        if (_adb == null) return;
+        new DeviceMonitorForm(_adb).Show(this);
+    }
+
     private async void InstallButton_Click(object? sender, EventArgs e) => await InstallAsync();
 
     private void AddFiles(IEnumerable<string> paths)

@@ -1,6 +1,6 @@
 namespace AdbInstaller.Forms;
 
-partial class PairDeviceDialog
+partial class WifiConnectDialog
 {
     private System.ComponentModel.IContainer components = null;
 
@@ -34,7 +34,7 @@ partial class PairDeviceDialog
         this._hintLabel.Location = new System.Drawing.Point(20, 15);
         this._hintLabel.Name = "_hintLabel";
         this._hintLabel.Size = new System.Drawing.Size(300, 60);
-        this._hintLabel.Text = "Mở Cài đặt > Tuỳ chọn nhà phát triển > Gỡ lỗi không dây > \"Ghép nối thiết bị bằng mã ghép nối\", rồi nhập đúng IP, cổng và mã hiện trên máy.";
+        this._hintLabel.Text = "Thiết bị đã từng ghép nối: nhập IP và Cổng hiện ở \"Gỡ lỗi không dây\", để trống Mã ghép nối. Ghép nối lần đầu: mở \"Ghép nối thiết bị bằng mã ghép nối\", nhập cả Mã hiện ở đó.";
         //
         // _ipLabel
         //
@@ -55,13 +55,13 @@ partial class PairDeviceDialog
         this._portLabel.AutoSize = true;
         this._portLabel.Location = new System.Drawing.Point(20, 115);
         this._portLabel.Name = "_portLabel";
-        this._portLabel.Text = "Cổng ghép nối:";
+        this._portLabel.Text = "Cổng:";
         //
         // _port
         //
         this._port.Location = new System.Drawing.Point(140, 112);
         this._port.Name = "_port";
-        this._port.PlaceholderText = "37251";
+        this._port.PlaceholderText = "40000";
         this._port.Size = new System.Drawing.Size(180, 23);
         //
         // _codeLabel
@@ -75,7 +75,7 @@ partial class PairDeviceDialog
         //
         this._code.Location = new System.Drawing.Point(140, 142);
         this._code.Name = "_code";
-        this._code.PlaceholderText = "123456";
+        this._code.PlaceholderText = "123456 (bỏ trống nếu đã ghép nối)";
         this._code.Size = new System.Drawing.Size(180, 23);
         //
         // _okButton
@@ -83,19 +83,19 @@ partial class PairDeviceDialog
         this._okButton.DialogResult = System.Windows.Forms.DialogResult.OK;
         this._okButton.Location = new System.Drawing.Point(140, 185);
         this._okButton.Name = "_okButton";
-        this._okButton.Size = new System.Drawing.Size(85, 29);
-        this._okButton.Text = "Ghép nối";
+        this._okButton.Size = new System.Drawing.Size(120, 29);
+        this._okButton.Text = "Kết nối";
         this._okButton.Click += new System.EventHandler(this.OkButton_Click);
         //
         // _cancelButton
         //
         this._cancelButton.DialogResult = System.Windows.Forms.DialogResult.Cancel;
-        this._cancelButton.Location = new System.Drawing.Point(235, 185);
+        this._cancelButton.Location = new System.Drawing.Point(265, 185);
         this._cancelButton.Name = "_cancelButton";
-        this._cancelButton.Size = new System.Drawing.Size(85, 29);
+        this._cancelButton.Size = new System.Drawing.Size(55, 29);
         this._cancelButton.Text = "Huỷ";
         //
-        // PairDeviceDialog
+        // WifiConnectDialog
         //
         this.AcceptButton = this._okButton;
         this.CancelButton = this._cancelButton;
@@ -113,9 +113,9 @@ partial class PairDeviceDialog
         this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog;
         this.MaximizeBox = false;
         this.MinimizeBox = false;
-        this.Name = "PairDeviceDialog";
+        this.Name = "WifiConnectDialog";
         this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
-        this.Text = "Kết nối qua Wi-Fi (ghép nối)";
+        this.Text = "Kết nối qua Wi-Fi";
         this.ResumeLayout(false);
         this.PerformLayout();
     }

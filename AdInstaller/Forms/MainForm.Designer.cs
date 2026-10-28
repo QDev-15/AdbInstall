@@ -25,7 +25,6 @@ partial class MainForm
         _refreshButton = new Button();
         _pairWifiButton = new Button();
         _scanWifiButton = new Button();
-        _connectIpButton = new Button();
         _monitorButton = new Button();
         _installButton = new Button();
         _progress = new ProgressBar();
@@ -133,22 +132,13 @@ partial class MainForm
         _scanWifiButton.TabIndex = 2;
         _scanWifiButton.Text = "Dò mạng Wi-Fi...";
         _scanWifiButton.Click += ScanWifiButton_Click;
-        // 
-        // _connectIpButton
-        // 
-        _connectIpButton.Location = new Point(312, 7);
-        _connectIpButton.Name = "_connectIpButton";
-        _connectIpButton.Size = new Size(97, 49);
-        _connectIpButton.TabIndex = 3;
-        _connectIpButton.Text = "Kết nối theo IP...";
-        _connectIpButton.Click += ConnectIpButton_Click;
         //
         // _monitorButton
         //
-        _monitorButton.Location = new Point(415, 7);
+        _monitorButton.Location = new Point(312, 7);
         _monitorButton.Name = "_monitorButton";
         _monitorButton.Size = new Size(97, 49);
-        _monitorButton.TabIndex = 4;
+        _monitorButton.TabIndex = 3;
         _monitorButton.Text = "Giám sát thiết bị...";
         _monitorButton.Click += MonitorButton_Click;
         //
@@ -237,11 +227,10 @@ partial class MainForm
         _rightButtonsPanel.Controls.Add(_refreshButton);
         _rightButtonsPanel.Controls.Add(_pairWifiButton);
         _rightButtonsPanel.Controls.Add(_scanWifiButton);
-        _rightButtonsPanel.Controls.Add(_connectIpButton);
         _rightButtonsPanel.Controls.Add(_monitorButton);
-        // AutoSize instead of a fixed Size.Height: 5 buttons no longer fit one row at the panel's design-time
-        // width, so FlowLayoutPanel wraps the extra one(s) to a second row -- a fixed height only tall enough
-        // for one row would clip that wrapped row below the visible area.
+        // AutoSize instead of a fixed Size.Height: if these buttons ever stop fitting one row at the panel's
+        // design-time width, FlowLayoutPanel wraps the extra one(s) to a second row -- a fixed height only tall
+        // enough for one row would clip that wrapped row below the visible area.
         _rightButtonsPanel.AutoSize = true;
         _rightButtonsPanel.AutoSizeMode = AutoSizeMode.GrowAndShrink;
         _rightButtonsPanel.Dock = DockStyle.Bottom;
@@ -356,7 +345,6 @@ partial class MainForm
     private System.Windows.Forms.Button _refreshButton;
     private System.Windows.Forms.Button _pairWifiButton;
     private System.Windows.Forms.Button _scanWifiButton;
-    private System.Windows.Forms.Button _connectIpButton;
     private System.Windows.Forms.Button _monitorButton;
     private System.Windows.Forms.Button _installButton;
     private System.Windows.Forms.ProgressBar _progress;

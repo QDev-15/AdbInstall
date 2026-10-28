@@ -66,11 +66,9 @@ public partial class MainForm : Form
 
     private async void RefreshButton_Click(object? sender, EventArgs e) => await RefreshDevicesAsync();
 
-    private async void PairWifiButton_Click(object? sender, EventArgs e) => await PairByWifiAsync();
+    private async void PairWifiButton_Click(object? sender, EventArgs e) => await ConnectWifiAsync();
 
     private async void ScanWifiButton_Click(object? sender, EventArgs e) => await ScanWifiAsync();
-
-    private async void ConnectIpButton_Click(object? sender, EventArgs e) => await ConnectByIpAsync();
 
     /// <summary>"Giám sát thiết bị...": opens non-modally (Show, not ShowDialog) so the user can keep installing
     /// / reconnecting in MainForm while watching live CPU/RAM/battery in the monitor window.</summary>
@@ -142,12 +140,18 @@ public partial class MainForm : Form
         _ => device.State,
     };
 
-    private async Task PairByWifiAsync()
+    /// <summary>"Kết nối qua Wi-Fi...": merged entry point for both pairing and plain reconnect (owner's report,
+    /// 2026-10-28, "2 button ... khá giống nhau") -- an empty <see cref="WifiConnectDialog.Code"/> means the
+    /// device was already paired before, so this just runs the IP connect command directly; a filled-in code
+    /// means a brand-new pairing, which <see cref="PairAndConnectAsync"/> runs first before its own follow-up
+    /// connect.</summary>
+    private async Task ConnectWifiAsync()
     {
         if (_adb == null) return;
-        using var dialog = new PairDeviceDialog();
+        using var dialog = new WifiConnectDialog();
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
-        await PairAndConnectAsync(dialog.Ip, dialog.Port, dialog.Code);
+        if (dialog.Code.Length == 0) await ConnectAsync(dialog.Ip, dialog.Port);
+        else await PairAndConnectAsync(dialog.Ip, dialog.Port, dialog.Code);
     }
 
     /// <summary>Pairs (needs the one-time code from the phone's "Pair device with pairing code" screen), then
@@ -188,20 +192,27 @@ public partial class MainForm : Form
         await RefreshDevicesAsync();
     }
 
-    /// <summary>Manual "adb connect ip:port", no mDNS involved at all -- the guaranteed-to-work fallback as long
-    /// as the user can read the current IP:port off the phone's own "Wireless debugging" screen, independent of
-    /// whether mDNS discovery works on this network.</summary>
-    private async Task ConnectByIpAsync(string? prefillIp = null)
+    /// <summary>Plain "adb connect ip:port", no mDNS and no dialog -- the shared tail end of both ConnectWifiAsync
+    /// (code field left blank, already paired before) and ConnectByIpAsync below.</summary>
+    private async Task ConnectAsync(string ip, string port)
     {
         if (_adb == null) return;
-        using var dialog = new ConnectDeviceDialog(prefillIp);
-        if (dialog.ShowDialog(this) != DialogResult.OK) return;
-
-        SetBusy(true, $"Đang kết nối {dialog.Ip}:{dialog.Port}...");
-        (bool ok, string message) = await _adb.ConnectAsync(dialog.Ip, dialog.Port);
+        SetBusy(true, $"Đang kết nối {ip}:{port}...");
+        (bool ok, string message) = await _adb.ConnectAsync(ip, port);
         SetBusy(false, ok ? "Đã kết nối." : "Không kết nối được: " + message);
         if (!ok) MessageBox.Show(this, message, "Kết nối thất bại", MessageBoxButtons.OK, MessageBoxIcon.Error);
         await RefreshDevicesAsync();
+    }
+
+    /// <summary>Prompts for IP:Port with the Code field hidden (pairing, if any, already happened by the time
+    /// this runs) -- only reached now from PairAndConnectAsync's own mDNS-lookup-failed fallback, since the
+    /// toolbar's standalone "Kết nối theo IP" button was merged into "Kết nối qua Wi-Fi..." (2026-10-28).</summary>
+    private async Task ConnectByIpAsync(string? prefillIp = null)
+    {
+        if (_adb == null) return;
+        using var dialog = new WifiConnectDialog(prefillIp, showCode: false);
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+        await ConnectAsync(dialog.Ip, dialog.Port);
     }
 
     /// <summary>Retries a few times (the phone's connect-port mDNS advertisement can take a moment to show up
@@ -225,8 +236,8 @@ public partial class MainForm : Form
 
     /// <summary>"Dò mạng Wi-Fi...": picks from devices currently broadcasting wireless debugging on the LAN
     /// (<see cref="AdbService.ScanMdnsAsync"/>) instead of the user having to read IP/port off the phone by
-    /// hand. A pairing-type result still needs the 6-digit code, so it just pre-fills <see cref="PairDeviceDialog"/>;
-    /// a connect-type result (already paired) can connect straight away.</summary>
+    /// hand. A pairing-type result still needs the 6-digit code, so it just pre-fills <see cref="WifiConnectDialog"/>
+    /// with its code field required; a connect-type result (already paired) can connect straight away.</summary>
     private async Task ScanWifiAsync()
     {
         if (_adb == null) return;
@@ -235,17 +246,13 @@ public partial class MainForm : Form
 
         if (selected.IsPairing)
         {
-            using var dialog = new PairDeviceDialog(selected.Ip, selected.Port);
+            using var dialog = new WifiConnectDialog(selected.Ip, selected.Port, requireCode: true);
             if (dialog.ShowDialog(this) != DialogResult.OK) return;
             await PairAndConnectAsync(dialog.Ip, dialog.Port, dialog.Code);
             return;
         }
 
-        SetBusy(true, $"Đang kết nối {selected.Ip}:{selected.Port}...");
-        (bool ok, string message) = await _adb.ConnectAsync(selected.Ip, selected.Port);
-        SetBusy(false, ok ? "Đã kết nối." : "Không kết nối được: " + message);
-        if (!ok) MessageBox.Show(this, message, "Kết nối thất bại", MessageBoxButtons.OK, MessageBoxIcon.Error);
-        await RefreshDevicesAsync();
+        await ConnectAsync(selected.Ip, selected.Port);
     }
 
     private void UpdateInstallButtonVisibility()
@@ -305,7 +312,7 @@ public partial class MainForm : Form
         _progressPercent = 0;
         _progress.Value = 0;
         _status.Text = statusText;
-        _addButton.Enabled = _removeButton.Enabled = _refreshButton.Enabled = _pairWifiButton.Enabled = _scanWifiButton.Enabled = _connectIpButton.Enabled = !busy;
+        _addButton.Enabled = _removeButton.Enabled = _refreshButton.Enabled = _pairWifiButton.Enabled = _scanWifiButton.Enabled = !busy;
         _fileList.Enabled = _deviceGrid.Enabled = !busy;
         UpdateInstallButtonVisibility();
     }
